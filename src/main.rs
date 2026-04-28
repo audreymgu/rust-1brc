@@ -2,6 +2,7 @@ use std::collections::HashMap;
 use std::collections::hash_map::Entry;
 use std::env;
 use std::fs;
+use std::time::Instant;
 
 #[derive(Debug)]
 struct StationData {
@@ -13,16 +14,20 @@ struct StationData {
 }
 
 fn main() {
+    let now = Instant::now();
     let args: Vec<String> = env::args().collect();
     // TODO: handle when arg not received
     let file_path = &args[1];
     read_back(file_path);
+    let elapsed = now.elapsed();
+    println!("Elapsed: {:.2?}", elapsed);
 }
 
 fn read_back(arg: &str) {
     let contents = fs::read_to_string(arg).expect("y no read");
 
     let mut list = format(&contents);
+    // iterate on HashMap in-place
     for (_key, data) in list.iter_mut() {
         data.avg = (data.sum / data.count * 10.0).round() / 10.0;
     }
