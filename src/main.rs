@@ -7,8 +7,9 @@ use std::fs;
 struct StationData {
     min: f64,
     max: f64,
+    avg: f64,
     sum: f64,
-    count: u32,
+    count: f64,
 }
 
 fn main() {
@@ -21,7 +22,10 @@ fn main() {
 fn read_back(arg: &str) {
     let contents = fs::read_to_string(arg).expect("y no read");
 
-    let list = format(&contents);
+    let mut list = format(&contents);
+    for (_key, data) in list.iter_mut() {
+        data.avg = (data.sum / data.count * 10.0).round() / 10.0;
+    }
     println!("{:#?}", list);
 }
 
@@ -51,15 +55,16 @@ fn format<'a>(arg: &'a String) -> HashMap<&'a str, StationData> {
                 if value < current_data.min {
                     current_data.min = value;
                 }
-                current_data.count += 1;
+                current_data.count += 1.0;
                 current_data.sum += value;
             }
             Entry::Vacant(empty) => {
                 let new_data = StationData {
                     min: value,
                     max: value,
+                    avg: 0.0,
                     sum: value,
-                    count: 1,
+                    count: 1.0,
                 };
                 empty.insert(new_data);
             }
