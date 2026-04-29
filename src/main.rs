@@ -2,25 +2,15 @@ use std::collections::HashMap;
 use std::collections::hash_map::Entry;
 use std::env;
 use std::fs;
-use std::path::Iter;
 use std::time::Instant;
 
 #[derive(Debug)]
 struct StationData {
     min: f64,
     max: f64,
-    // not needed here
-    // avg: f64,
     sum: f64,
     count: f64,
 }
-
-// custom parsing
-// state machine?
-// parser struct
-// reference of input
-// where we are in the input
-// next()
 
 struct Parser<'a> {
     input: &'a str,
@@ -41,6 +31,8 @@ impl<'a> Iterator for Parser<'a> {
 
     fn next(&mut self) -> Option<Self::Item> {
         let loc = self.loc;
+
+        // handle when loc reaches end of length
         if loc == self.input.len() {
             return None;
         }
@@ -51,10 +43,12 @@ impl<'a> Iterator for Parser<'a> {
 
             // after the first char because names' length >= 1
             let mut new_loc = loc + 1;
+
             // check current char if semicolon
             while next_code_point(input_bytes).unwrap() != &';' {
                 new_loc += 1;
             }
+
             // at this point, new_loc == loc of ';'
             let found_name = input.get_unchecked(loc..new_loc - 1);
 
@@ -82,59 +76,40 @@ impl<'a> Iterator for Parser<'a> {
 }
 
 fn main() {
-    let now = Instant::now();
     let args: Vec<String> = env::args().collect();
-    // TODO: handle when arg not received
     let file_path = &args[1];
     read_back(file_path);
-    let elapsed = now.elapsed();
-    println!("Elapsed: {:.2?}", elapsed);
 }
 
 fn read_back(arg: &str) {
-    let contents = fs::read_to_string(arg).expect("y no read");
-
+    // test case
     let example_name = "Şuḩār";
-
     let list = format(&contents);
-
     let data = &list[example_name];
+    let avg = (data.sum / data.count * 10.0).round() / 10.0;
+    println!("{:#?},{:#?},{:#?}", avg, data.min, data.max);
+
+    let contents = fs::read_to_string(arg).expect("y no read");
 
     // iterate on HashMap in-place
     // for (_key, data) in list.iter_mut() {
     //     data.avg = (data.sum / data.count * 10.0).round() / 10.0;
     // }
-
-    let avg = (data.sum / data.count * 10.0).round() / 10.0;
-
-    // println!("{:#?}", list);
-    println!("{:#?},{:#?},{:#?}", avg, data.min, data.max);
 }
 
 fn format<'a>(arg: &'a String) -> HashMap<&'a str, StationData> {
-    // create empty hashmap
+    // optimization ideas
+    // call custom parser to advance line by line through the file which returns label and value, rather than relying on default functions
     // &str is arbitrary length, if we can set max length based on string length then we can optimize
     // remove exception handling if know all data is well-formed
+
+    // create empty hashmap
     let mut places: HashMap<&str, StationData> = HashMap::new();
 
-    // get each data point
-    // lazy return
-    // struct, splitter, reference to original data source
-    // copy/reference new string every time
-
-    // call custom parser, which returns label and value
     let data = arg.split('\n');
-
-    // custom parsing
-    // state machine?
-    // parser struct
-    // reference of input
-    // where we are in the input
-    // next()
 
     // iterate through all data points
     for point in data {
-        // split by semicolon and collect
         // split creates another copy/reference
         let mut data_pair = point.split(';');
 
@@ -169,20 +144,6 @@ fn format<'a>(arg: &'a String) -> HashMap<&'a str, StationData> {
     }
     places
 }
-
-// pseudo-code
-// get file contents DONE
-// split by new-line > Vec DONE
-// for item in vec
-// check name list
-// if not in list, create Vec to store value (should this just be a reference?)
-// for each name list
-// calculate min?
-// hold one value in memory and compare, switch out when smaller
-// calculate max?
-// hold one value in memory and compare, switch out when larger
-// calculate average
-// just... get the average?
 
 #[inline]
 pub unsafe fn next_code_point<'a, I: Iterator<Item = &'a u8>>(bytes: &mut I) -> Option<u32> {
