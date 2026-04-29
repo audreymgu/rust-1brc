@@ -2,7 +2,6 @@ use std::collections::HashMap;
 use std::collections::hash_map::Entry;
 use std::env;
 use std::fs;
-use std::time::Instant;
 
 #[derive(Debug)]
 struct StationData {
@@ -82,19 +81,25 @@ fn main() {
 }
 
 fn read_back(arg: &str) {
-    // test case
-    let example_name = "Şuḩār";
-    let list = format(&contents);
-    let data = &list[example_name];
-    let avg = (data.sum / data.count * 10.0).round() / 10.0;
-    println!("{:#?},{:#?},{:#?}", avg, data.min, data.max);
-
+    // read in file
     let contents = fs::read_to_string(arg).expect("y no read");
 
+    // get max, min, sum, count
+    let list = format(&contents);
+
+    // get example station
+    let example_name = "Şuḩār";
+    let data = &list[example_name];
+
+    // get example average
+    let avg = (data.sum / data.count * 10.0).round() / 10.0;
     // iterate on HashMap in-place
     // for (_key, data) in list.iter_mut() {
     //     data.avg = (data.sum / data.count * 10.0).round() / 10.0;
     // }
+
+    // print example station
+    println!("{:#?},{:#?},{:#?}", avg, data.min, data.max);
 }
 
 fn format<'a>(arg: &'a String) -> HashMap<&'a str, StationData> {
@@ -145,16 +150,30 @@ fn format<'a>(arg: &'a String) -> HashMap<&'a str, StationData> {
     places
 }
 
+// utf-8 initial byte handler
+const fn utf8_first_byte(byte: u8, width: u32) -> u32 {
+    (byte & (0x7F >> width)) as u32
+}
+
+// utf-8 continuing byte accumulator
+#[inline]
+const fn utf8_acc_cont_byte(ch: u32, byte: u8) -> u32 {
+    // create 6 trailing spaces, then strip header and accumulate via bitwise OR
+    (ch << 6) | (byte & 0x3F) as u32
+}
+
+// hard-code value for continuing byte mask
+const CONT_MASK: u8 = 0b0011_1111;
+
 #[inline]
 pub unsafe fn next_code_point<'a, I: Iterator<Item = &'a u8>>(bytes: &mut I) -> Option<u32> {
-    // Decode UTF-8
+    // handle ASCII if header byte is in range
     let x = *bytes.next()?;
     if x < 128 {
         return Some(x as u32);
     }
 
-    // Multibyte case follows
-    // Decode from a byte combination out of: [[[x y] z] w]
+    // [[[x y] z] w] case
     // NOTE: Performance is sensitive to the exact formulation here
     let init = utf8_first_byte(x, 2);
     // SAFETY: `bytes` produces an UTF-8-like string,
