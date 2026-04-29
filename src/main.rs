@@ -37,14 +37,15 @@ impl<'a> Iterator for Parser<'a> {
         }
         // pub unsafe fn next_code_point<'a, I: Iterator<Item = &'a u8>>(bytes: &mut I) -> Option<u32> {
         unsafe {
+            // get input and convert to bytes
             let input = self.input;
-            let mut input_bytes = input.bytes();
+            let mut input_bytes = input.as_bytes().iter();
 
             // after the first char because names' length >= 1
             let mut new_loc = loc + 1;
 
-            // check current char if semicolon
-            while next_code_point(input_bytes).unwrap() != &';' {
+            // check letter by letter for semicolon
+            while next_code_point(&mut input_bytes).unwrap() != ';' as u32 {
                 new_loc += 1;
             }
 
@@ -55,20 +56,21 @@ impl<'a> Iterator for Parser<'a> {
             // at this point, new_loc == loc after ';'
 
             let f64_start_loc = new_loc;
+
             // check current char if newline
-            while input.get_unchecked(new_loc) != &'\n' {
+            while next_code_point(&mut input_bytes).unwrap() != '\n' as u32 {
                 new_loc += 1;
             }
-            // at this point, new_loc == loc of '\n'
-            // get_unchecked (loc .. new_loc)
 
-            let found_number_str = input.get_unchecked(f64_start_loc..new_loc - 1);
+            // at this point, new_loc == loc of '\n'
+            let found_stat_string = input.get_unchecked(f64_start_loc..new_loc - 1);
 
             new_loc += 1;
             // at this point, new_loc == loc after '\n'
 
             // i16, range -99.9, 99.9
-            let found_number = found_number_str.parse().expect("thought this was a f64");
+            let found_number = found_stat_string.parse().expect("thought this was a f64");
+
             return Some((found_name, found_number));
         }
     }
