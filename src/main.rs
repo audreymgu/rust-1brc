@@ -2,15 +2,83 @@ use std::collections::HashMap;
 use std::collections::hash_map::Entry;
 use std::env;
 use std::fs;
+use std::path::Iter;
 use std::time::Instant;
 
 #[derive(Debug)]
 struct StationData {
     min: f64,
     max: f64,
-    avg: f64,
+    // not needed here
+    // avg: f64,
     sum: f64,
     count: f64,
+}
+
+// custom parsing
+// state machine?
+// parser struct
+// reference of input
+// where we are in the input
+// next()
+
+struct Parser<'a> {
+    input: &'a str,
+    loc: usize,
+}
+
+impl<'a> Parser<'a> {
+    fn new(input: &'a str) -> Parser<'a> {
+        Parser {
+            input: input,
+            loc: 0,
+        }
+    }
+}
+
+impl<'a> Iterator for Parser<'a> {
+    type Item = (&'a str, f64);
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let loc = self.loc;
+        if loc == self.input.len() {
+            return None;
+        }
+        // pub unsafe fn next_code_point<'a, I: Iterator<Item = &'a u8>>(bytes: &mut I) -> Option<u32> {
+        unsafe {
+            let input = self.input;
+            let mut input_bytes = input.bytes();
+
+            // after the first char because names' length >= 1
+            let mut new_loc = loc + 1;
+            // check current char if semicolon
+            while next_code_point(input_bytes).unwrap() != &';' {
+                new_loc += 1;
+            }
+            // at this point, new_loc == loc of ';'
+            let found_name = input.get_unchecked(loc..new_loc - 1);
+
+            new_loc += 1;
+            // at this point, new_loc == loc after ';'
+
+            let f64_start_loc = new_loc;
+            // check current char if newline
+            while input.get_unchecked(new_loc) != &'\n' {
+                new_loc += 1;
+            }
+            // at this point, new_loc == loc of '\n'
+            // get_unchecked (loc .. new_loc)
+
+            let found_number_str = input.get_unchecked(f64_start_loc..new_loc - 1);
+
+            new_loc += 1;
+            // at this point, new_loc == loc after '\n'
+
+            // i16, range -99.9, 99.9
+            let found_number = found_number_str.parse().expect("thought this was a f64");
+            return Some((found_name, found_number));
+        }
+    }
 }
 
 fn main() {
@@ -26,24 +94,48 @@ fn main() {
 fn read_back(arg: &str) {
     let contents = fs::read_to_string(arg).expect("y no read");
 
-    let mut list = format(&contents);
+    let example_name = "Şuḩār";
+
+    let list = format(&contents);
+
+    let data = &list[example_name];
+
     // iterate on HashMap in-place
-    for (_key, data) in list.iter_mut() {
-        data.avg = (data.sum / data.count * 10.0).round() / 10.0;
-    }
-    println!("{:#?}", list);
+    // for (_key, data) in list.iter_mut() {
+    //     data.avg = (data.sum / data.count * 10.0).round() / 10.0;
+    // }
+
+    let avg = (data.sum / data.count * 10.0).round() / 10.0;
+
+    // println!("{:#?}", list);
+    println!("{:#?},{:#?},{:#?}", avg, data.min, data.max);
 }
 
 fn format<'a>(arg: &'a String) -> HashMap<&'a str, StationData> {
     // create empty hashmap
+    // &str is arbitrary length, if we can set max length based on string length then we can optimize
+    // remove exception handling if know all data is well-formed
     let mut places: HashMap<&str, StationData> = HashMap::new();
 
     // get each data point
-    let data: Vec<&str> = arg.split('\n').collect();
+    // lazy return
+    // struct, splitter, reference to original data source
+    // copy/reference new string every time
+
+    // call custom parser, which returns label and value
+    let data = arg.split('\n');
+
+    // custom parsing
+    // state machine?
+    // parser struct
+    // reference of input
+    // where we are in the input
+    // next()
 
     // iterate through all data points
-    for point in data.iter() {
+    for point in data {
         // split by semicolon and collect
+        // split creates another copy/reference
         let mut data_pair = point.split(';');
 
         // operate on iterator
@@ -67,7 +159,7 @@ fn format<'a>(arg: &'a String) -> HashMap<&'a str, StationData> {
                 let new_data = StationData {
                     min: value,
                     max: value,
-                    avg: 0.0,
+                    // avg: 0.0,
                     sum: value,
                     count: 1.0,
                 };
@@ -91,3 +183,40 @@ fn format<'a>(arg: &'a String) -> HashMap<&'a str, StationData> {
 // hold one value in memory and compare, switch out when larger
 // calculate average
 // just... get the average?
+
+#[inline]
+pub unsafe fn next_code_point<'a, I: Iterator<Item = &'a u8>>(bytes: &mut I) -> Option<u32> {
+    // Decode UTF-8
+    let x = *bytes.next()?;
+    if x < 128 {
+        return Some(x as u32);
+    }
+
+    // Multibyte case follows
+    // Decode from a byte combination out of: [[[x y] z] w]
+    // NOTE: Performance is sensitive to the exact formulation here
+    let init = utf8_first_byte(x, 2);
+    // SAFETY: `bytes` produces an UTF-8-like string,
+    // so the iterator must produce a value here.
+    let y = unsafe { *bytes.next().unwrap_unchecked() };
+    let mut ch = utf8_acc_cont_byte(init, y);
+    if x >= 0xE0 {
+        // [[x y z] w] case
+        // 5th bit in 0xE0 .. 0xEF is always clear, so `init` is still valid
+        // SAFETY: `bytes` produces an UTF-8-like string,
+        // so the iterator must produce a value here.
+        let z = unsafe { *bytes.next().unwrap_unchecked() };
+        let y_z = utf8_acc_cont_byte((y & CONT_MASK) as u32, z);
+        ch = init << 12 | y_z;
+        if x >= 0xF0 {
+            // [x y z w] case
+            // use only the lower 3 bits of `init`
+            // SAFETY: `bytes` produces an UTF-8-like string,
+            // so the iterator must produce a value here.
+            let w = unsafe { *bytes.next().unwrap_unchecked() };
+            ch = (init & 7) << 18 | utf8_acc_cont_byte(y_z, w);
+        }
+    }
+
+    Some(ch)
+}
