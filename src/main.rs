@@ -50,7 +50,7 @@ impl<'a> Iterator for Parser<'a> {
             }
 
             // at this point, new_loc == loc of ';'
-            let found_name = input.get_unchecked(loc..new_loc - 1);
+            let found_name = input.get_unchecked(loc..new_loc);
 
             new_loc += 1;
             // at this point, new_loc == loc after ';'
@@ -63,7 +63,7 @@ impl<'a> Iterator for Parser<'a> {
             }
 
             // at this point, new_loc == loc of '\n'
-            let found_stat_string = input.get_unchecked(f64_start_loc..new_loc - 1);
+            let found_stat_string = input.get_unchecked(f64_start_loc..new_loc);
 
             new_loc += 1;
             // at this point, new_loc == loc after '\n'
