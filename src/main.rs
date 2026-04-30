@@ -67,6 +67,7 @@ impl<'a> Iterator for Parser<'a> {
 
             new_loc += 1;
             // at this point, new_loc == loc after '\n'
+            self.loc = new_loc;
 
             // i16, range -99.9, 99.9
             let found_number = found_stat_string.parse().expect("thought this was a f64");
