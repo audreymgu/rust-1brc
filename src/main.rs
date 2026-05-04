@@ -32,9 +32,10 @@ impl<'a> Iterator for Parser<'a> {
         let loc = self.loc;
 
         // handle when loc reaches end of length
-        if loc == self.input.len() {
+        if loc >= self.input.len() {
             return None;
         }
+
         // pub unsafe fn next_code_point<'a, I: Iterator<Item = &'a u8>>(bytes: &mut I) -> Option<u32> {
         unsafe {
             // get input and convert to bytes
@@ -50,12 +51,13 @@ impl<'a> Iterator for Parser<'a> {
             }
 
             // at this point, new_loc == loc of ';'
-            let found_name = input.get_unchecked(loc..new_loc);
+            print!("{},{:#?},{:#?}", "name", loc, new_loc);
+            // let found_name = input.get_unchecked(loc..new_loc - 1);
+
+            let f64_start_loc = new_loc;
 
             new_loc += 1;
             // at this point, new_loc == loc after ';'
-
-            let f64_start_loc = new_loc;
 
             // check current char if newline
             while next_code_point(&mut input_bytes).unwrap() != '\n' as u32 {
@@ -63,14 +65,22 @@ impl<'a> Iterator for Parser<'a> {
             }
 
             // at this point, new_loc == loc of '\n'
-            let found_stat_string = input.get_unchecked(f64_start_loc..new_loc);
+            println!("{},{:#?},{:#?}", "data", f64_start_loc, new_loc);
+            let found_stat_string = input.get_unchecked(f64_start_loc..new_loc - 1);
+            println!("{}", found_stat_string);
 
-            new_loc += 1;
+            if (new_loc < self.input.len()) {
+                new_loc += 1;
+            }
+
             // at this point, new_loc == loc after '\n'
             self.loc = new_loc;
 
             // i16, range -99.9, 99.9
-            let found_number = found_stat_string.parse().expect("thought this was a f64");
+            // let found_number = found_stat_string.parse().expect("thought this was a f64");
+
+            let found_name = "debug";
+            let found_number = 24.5;
 
             return Some((found_name, found_number));
         }
@@ -91,7 +101,8 @@ fn read_back(arg: &str) {
     let list = format(&contents);
 
     // get example station
-    let example_name = "Şuḩār";
+    // let example_name = "Şuḩār";
+    let example_name = "Enfield Lock";
     let data = &list[example_name];
 
     // get example average
@@ -102,58 +113,63 @@ fn read_back(arg: &str) {
     // }
 
     // print example station
-    println!("{:#?},{:#?},{:#?}", avg, data.min, data.max);
+    // println!("{:#?},{:#?},{:#?}", avg, data.min, data.max);
 }
 
 fn format<'a>(arg: &'a String) -> HashMap<&'a str, StationData> {
     // optimization ideas
-    // call custom parser to advance line by line through the file which returns label and value, rather than relying on default functions
     // &str is arbitrary length, if we can set max length based on string length then we can optimize
     // remove exception handling if know all data is well-formed
 
     // create empty hashmap
     let mut places: HashMap<&str, StationData> = HashMap::new();
 
-    let data = arg.split('\n');
+    let mut parsing_machine: Parser = Parser::new(arg);
 
-    // iterate through all data points
-    for point in data {
-        // split creates another copy/reference
-        let mut data_pair = point.split(';');
-
-        // operate on iterator
-        let label = data_pair.next().unwrap_or("unknown");
-        let value: f64 = data_pair.next().unwrap_or("0").parse().unwrap_or(0.0);
-
-        // check and update hashmap
-        match places.entry(label) {
-            Entry::Occupied(mut current_station) => {
-                let current_data = current_station.get_mut();
-                if value > current_data.max {
-                    current_data.max = value;
-                }
-                if value < current_data.min {
-                    current_data.min = value;
-                }
-                current_data.count += 1.0;
-                current_data.sum += value;
-            }
-            Entry::Vacant(empty) => {
-                let new_data = StationData {
-                    min: value,
-                    max: value,
-                    // avg: 0.0,
-                    sum: value,
-                    count: 1.0,
-                };
-                empty.insert(new_data);
-            }
-        }
+    for (label, value) in parsing_machine {
+        // print!("{:#?},{:#?}", label, value);
     }
+
+    // // iterate through all data points
+    // for point in data {
+    //     // split creates another copy/reference
+    //     let mut data_pair = point.split(';');
+
+    //     // operate on iterator
+    //     let label = data_pair.next().unwrap_or("unknown");
+    //     let value: f64 = data_pair.next().unwrap_or("0").parse().unwrap_or(0.0);
+
+    //     // check and update hashmap
+    //     match places.entry(label) {
+    //         Entry::Occupied(mut current_station) => {
+    //             let current_data = current_station.get_mut();
+    //             if value > current_data.max {
+    //                 current_data.max = value;
+    //             }
+    //             if value < current_data.min {
+    //                 current_data.min = value;
+    //             }
+    //             current_data.count += 1.0;
+    //             current_data.sum += value;
+    //         }
+    //         Entry::Vacant(empty) => {
+    //             let new_data = StationData {
+    //                 min: value,
+    //                 max: value,
+    //                 sum: value,
+    //                 count: 1.0,
+    //             };
+    //             empty.insert(new_data);
+    //         }
+    //     }
+    // }
+
     places
 }
 
 // utf-8 initial byte handler
+// inlining removes the need for a function call
+#[inline]
 const fn utf8_first_byte(byte: u8, width: u32) -> u32 {
     (byte & (0x7F >> width)) as u32
 }
