@@ -2,6 +2,7 @@ use std::collections::HashMap;
 use std::collections::hash_map::Entry;
 use std::env;
 use std::fs;
+use std::str;
 
 #[derive(Debug)]
 struct StationData {
@@ -26,7 +27,7 @@ impl<'a> Parser<'a> {
 }
 
 impl<'a> Iterator for Parser<'a> {
-    type Item = (&'a str, f64);
+    type Item = (&'a [u8], f64);
 
     fn next(&mut self) -> Option<Self::Item> {
         let loc = self.loc;
@@ -40,47 +41,103 @@ impl<'a> Iterator for Parser<'a> {
         unsafe {
             // get input and convert to bytes
             let input = self.input;
-            let mut input_bytes = input.as_bytes().iter();
+            let input_bytes = input.as_bytes();
+            let mut input_bytes_iter = input_bytes.iter();
 
             // after the first char because names' length >= 1
             let mut new_loc = loc + 1;
 
             // check letter by letter for semicolon
-            while next_code_point(&mut input_bytes).unwrap() != ';' as u32 {
-                new_loc += 1;
+            // modify for reusability
+            loop {
+                let (code_point, len_bytes) = next_code_point(&mut input_bytes_iter).unwrap();
+                if code_point == ';' as u32 {
+                    break;
+                }
+                new_loc += len_bytes;
             }
 
+            // new_loc += 1;
             // at this point, new_loc == loc of ';'
-            print!("{},{:#?},{:#?}", "name", loc, new_loc);
-            // let found_name = input.get_unchecked(loc..new_loc - 1);
+
+            debug("semicolon", input_bytes, 0, new_loc);
+
+            println!("{}:{:#?},{:#?}", "name slice", loc, new_loc);
+            let found_name = input_bytes.get_unchecked(loc..new_loc - 1);
 
             let f64_start_loc = new_loc;
 
-            new_loc += 1;
             // at this point, new_loc == loc after ';'
 
-            // check current char if newline
-            while next_code_point(&mut input_bytes).unwrap() != '\n' as u32 {
-                new_loc += 1;
+            debug("before_newln", input_bytes, 0, new_loc);
+            // consolidate
+            loop {
+                match next_code_point(&mut input_bytes_iter) {
+                    Some((c, len_bytes)) => {
+                        if c == '\n' as u32 {
+                            break;
+                        }
+                        new_loc += len_bytes;
+                    }
+                    None => {
+                        // make this a "plug-in" to reusable code
+
+                        // exit handling for EOF
+                        // at this point, new_loc == loc of '\n'
+                        println!("{}:{:#?},{:#?}", "data slice:", f64_start_loc, new_loc);
+                        let found_stat_string = input_bytes.get_unchecked(f64_start_loc..new_loc);
+                        println!("{:?}", str::from_utf8(found_stat_string).unwrap());
+
+                        // at this point, new_loc == loc after '\n'
+                        self.loc = new_loc;
+
+                        // i16, range -99.9, 99.9
+                        let found_number = str::from_utf8(found_stat_string)
+                            .unwrap()
+                            .parse()
+                            .expect("thought this was a f64");
+
+                        return Some((found_name, found_number));
+                    }
+                }
             }
+            // consolidate loop code with reused code below in some way
+
+            debug("after_newln", input_bytes, 0, new_loc);
 
             // at this point, new_loc == loc of '\n'
-            println!("{},{:#?},{:#?}", "data", f64_start_loc, new_loc);
-            let found_stat_string = input.get_unchecked(f64_start_loc..new_loc - 1);
-            println!("{}", found_stat_string);
+            println!(
+                "{}:{:#?},{:#?} {}",
+                "data slice:",
+                f64_start_loc,
+                new_loc,
+                input_bytes.len()
+            );
 
+            let found_stat_string = input_bytes.get_unchecked(f64_start_loc..new_loc);
+            println!("{:?}", str::from_utf8(found_stat_string).unwrap());
+
+            debug("before advance", input_bytes, 0, new_loc);
             if (new_loc < self.input.len()) {
                 new_loc += 1;
             }
+            debug("after advance", input_bytes, 0, new_loc);
 
             // at this point, new_loc == loc after '\n'
             self.loc = new_loc;
 
+            println!(
+                "found_number: {}",
+                str::from_utf8(found_stat_string).unwrap()
+            );
             // i16, range -99.9, 99.9
-            // let found_number = found_stat_string.parse().expect("thought this was a f64");
+            let found_number = str::from_utf8(found_stat_string)
+                .unwrap()
+                .parse()
+                .expect("thought this was a f64");
 
-            let found_name = "debug";
-            let found_number = 24.5;
+            // let found_name = "debug";
+            // let found_number = 24.5;
 
             return Some((found_name, found_number));
         }
@@ -184,13 +241,21 @@ const fn utf8_acc_cont_byte(ch: u32, byte: u8) -> u32 {
 // hard-code value for continuing byte mask
 const CONT_MASK: u8 = 0b0011_1111;
 
+// returning (code_point, len_bytes)
+
+// testing behavior for unsafe fn
 #[inline]
-pub unsafe fn next_code_point<'a, I: Iterator<Item = &'a u8>>(bytes: &mut I) -> Option<u32> {
+pub unsafe fn next_code_point<'a, I: Iterator<Item = &'a u8>>(
+    bytes: &mut I,
+) -> Option<(u32, usize)> {
     // handle ASCII if header byte is in range
     let x = *bytes.next()?;
+    let mut len_bytes = 1;
     if x < 128 {
-        return Some(x as u32);
+        return Some((x as u32, len_bytes));
     }
+
+    len_bytes += 1;
 
     // [[[x y] z] w] case
     // NOTE: Performance is sensitive to the exact formulation here
@@ -200,6 +265,7 @@ pub unsafe fn next_code_point<'a, I: Iterator<Item = &'a u8>>(bytes: &mut I) -> 
     let y = unsafe { *bytes.next().unwrap_unchecked() };
     let mut ch = utf8_acc_cont_byte(init, y);
     if x >= 0xE0 {
+        len_bytes += 1;
         // [[x y z] w] case
         // 5th bit in 0xE0 .. 0xEF is always clear, so `init` is still valid
         // SAFETY: `bytes` produces an UTF-8-like string,
@@ -208,6 +274,7 @@ pub unsafe fn next_code_point<'a, I: Iterator<Item = &'a u8>>(bytes: &mut I) -> 
         let y_z = utf8_acc_cont_byte((y & CONT_MASK) as u32, z);
         ch = init << 12 | y_z;
         if x >= 0xF0 {
+            len_bytes += 1;
             // [x y z w] case
             // use only the lower 3 bits of `init`
             // SAFETY: `bytes` produces an UTF-8-like string,
@@ -217,5 +284,44 @@ pub unsafe fn next_code_point<'a, I: Iterator<Item = &'a u8>>(bytes: &mut I) -> 
         }
     }
 
-    Some(ch)
+    Some((ch, len_bytes))
+}
+
+// code point is variable
+// slicing by bytes
+
+#[inline]
+pub unsafe fn next_code_point_len<'a, I: Iterator<Item = &'a u8>>(bytes: &mut I) -> Option<usize> {
+    // handle ASCII if header byte is in range
+    let x = *bytes.next()?;
+    if x < 128 {
+        return Some(1);
+    }
+
+    // [[[x y] z] w] case
+    // NOTE: Performance is sensitive to the exact formulation here
+    let init = utf8_first_byte(x, 2);
+    // SAFETY: `bytes` produces an UTF-8-like string,
+    // so the iterator must produce a value here.
+    let _ = unsafe { *bytes.next().unwrap_unchecked() };
+    if x >= 0xE0 {
+        // [[x y z] w] case
+        // 5th bit in 0xE0 .. 0xEF is always clear, so `init` is still valid
+        // SAFETY: `bytes` produces an UTF-8-like string,
+        // so the iterator must produce a value here.
+        let _ = unsafe { *bytes.next().unwrap_unchecked() };
+        if x >= 0xF0 { Some(4) } else { Some(3) }
+    } else {
+        Some(2)
+    }
+}
+
+// const fn utf8_first_byte(byte: u8, width: u32)
+unsafe fn debug(label: &str, input_bytes: &[u8], f64_start_loc: usize, new_loc: usize) {
+    let found_stat_string = input_bytes.get_unchecked(f64_start_loc..new_loc);
+    println!(
+        "{}: {:?}",
+        label,
+        str::from_utf8(found_stat_string).unwrap()
+    );
 }
