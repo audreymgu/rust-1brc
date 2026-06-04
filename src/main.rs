@@ -1,27 +1,30 @@
 use std::collections::HashMap;
-use std::collections::hash_map::Entry;
 use std::env;
 use std::fs;
 use std::str;
 
+// capture station data
 #[derive(Debug)]
 struct StationData {
     min: f64,
     max: f64,
     sum: f64,
     count: f64,
+    avg: f64,
 }
 
+// define parser inputs
 struct Parser<'a> {
     input: &'a str,
-    loc: usize,
+    index: usize,
 }
 
+// parser instantiation
 impl<'a> Parser<'a> {
     fn new(input: &'a str) -> Parser<'a> {
         Parser {
             input: input,
-            loc: 0,
+            index: 0,
         }
     }
 }
@@ -30,69 +33,70 @@ impl<'a> Iterator for Parser<'a> {
     type Item = (&'a [u8], f64);
 
     fn next(&mut self) -> Option<Self::Item> {
-        let loc = self.loc;
+        let index = self.index;
 
-        // handle when loc reaches end of length
-        if loc >= self.input.len() {
+        // handle when index reaches end of length
+        if index >= self.input.len() {
             return None;
         }
 
-        // pub unsafe fn next_code_point<'a, I: Iterator<Item = &'a u8>>(bytes: &mut I) -> Option<u32> {
         unsafe {
             // get input and convert to bytes
             let input = self.input;
             let input_bytes = input.as_bytes();
             let mut input_bytes_iter = input_bytes.iter();
 
-            // after the first char because names' length >= 1
-            let mut new_loc = loc + 1;
+            // create cursor
+            let mut cursor_index = index;
 
-            // check letter by letter for semicolon
-            // modify for reusability
+            // track name start
+            // TODO: handle index advance
+            let mut name_start_index = index;
+
+            // advance cursor_index with next_code_point until semicolon is reached
+            // TODO: DRY
             loop {
                 let (code_point, len_bytes) = next_code_point(&mut input_bytes_iter).unwrap();
                 if code_point == ';' as u32 {
                     break;
                 }
-                new_loc += len_bytes;
+                cursor_index += len_bytes;
             }
 
-            // new_loc += 1;
-            // at this point, new_loc == loc of ';'
+            // cursor_index should be at ';'
+            debug("semicolon", input_bytes, cursor_index, cursor_index + 1);
 
-            debug("semicolon", input_bytes, 0, new_loc);
+            // get name
+            let found_name = input_bytes.get_unchecked(name_start_index..cursor_index);
 
-            println!("{}:{:#?},{:#?}", "name slice", loc, new_loc);
-            let found_name = input_bytes.get_unchecked(loc..new_loc - 1);
+            cursor_index += 1; // cursor is now on first digit of temp
 
-            let f64_start_loc = new_loc;
+            // track temp start
+            let temp_start_index = cursor_index;
 
-            // at this point, new_loc == loc after ';'
-
-            debug("before_newln", input_bytes, 0, new_loc);
-            // consolidate
+            // TODO: consolidate
             loop {
                 match next_code_point(&mut input_bytes_iter) {
                     Some((c, len_bytes)) => {
                         if c == '\n' as u32 {
                             break;
                         }
-                        new_loc += len_bytes;
+                        cursor_index += len_bytes;
                     }
                     None => {
-                        // make this a "plug-in" to reusable code
+                        // EOF handling
+                        // TODO: this is not working
+                        // TODO: make this reusable
+                        println!("Exit condition met");
 
-                        // exit handling for EOF
-                        // at this point, new_loc == loc of '\n'
-                        println!("{}:{:#?},{:#?}", "data slice:", f64_start_loc, new_loc);
-                        let found_stat_string = input_bytes.get_unchecked(f64_start_loc..new_loc);
-                        println!("{:?}", str::from_utf8(found_stat_string).unwrap());
+                        // at this point, cursor_index == index of '\n' on last line
+                        debug("newln", input_bytes, cursor_index, cursor_index + 1);
 
-                        // at this point, new_loc == loc after '\n'
-                        self.loc = new_loc;
+                        let found_temp_str =
+                            input_bytes.get_unchecked(temp_start_index..cursor_index);
 
                         // i16, range -99.9, 99.9
-                        let found_number = str::from_utf8(found_stat_string)
+                        let found_number = str::from_utf8(found_temp_str)
                             .unwrap()
                             .parse()
                             .expect("thought this was a f64");
@@ -101,43 +105,26 @@ impl<'a> Iterator for Parser<'a> {
                     }
                 }
             }
-            // consolidate loop code with reused code below in some way
 
-            debug("after_newln", input_bytes, 0, new_loc);
+            // at this point, cursor_index == index of '\n' on last line
+            debug("newln", input_bytes, cursor_index, cursor_index + 1);
 
-            // at this point, new_loc == loc of '\n'
-            println!(
-                "{}:{:#?},{:#?} {}",
-                "data slice:",
-                f64_start_loc,
-                new_loc,
-                input_bytes.len()
-            );
+            // TODO: consolidate loop code with reused code below in some way
+            let found_temp_str = input_bytes.get_unchecked(temp_start_index..cursor_index);
+            debug("temp", input_bytes, temp_start_index, cursor_index);
 
-            let found_stat_string = input_bytes.get_unchecked(f64_start_loc..new_loc);
-            println!("{:?}", str::from_utf8(found_stat_string).unwrap());
-
-            debug("before advance", input_bytes, 0, new_loc);
-            if (new_loc < self.input.len()) {
-                new_loc += 1;
-            }
-            debug("after advance", input_bytes, 0, new_loc);
-
-            // at this point, new_loc == loc after '\n'
-            self.loc = new_loc;
-
-            println!(
-                "found_number: {}",
-                str::from_utf8(found_stat_string).unwrap()
-            );
-            // i16, range -99.9, 99.9
-            let found_number = str::from_utf8(found_stat_string)
+            let found_number = str::from_utf8(found_temp_str)
                 .unwrap()
                 .parse()
                 .expect("thought this was a f64");
 
-            // let found_name = "debug";
-            // let found_number = 24.5;
+            if (cursor_index < self.input.len()) {
+                cursor_index += 1;
+            }
+            debug("line advance", input_bytes, 0, cursor_index);
+
+            // catch up iterator index with cursor
+            self.index = cursor_index;
 
             return Some((found_name, found_number));
         }
@@ -147,81 +134,25 @@ impl<'a> Iterator for Parser<'a> {
 fn main() {
     let args: Vec<String> = env::args().collect();
     let file_path = &args[1];
-    read_back(file_path);
+    read(file_path);
 }
 
-fn read_back(arg: &str) {
+fn read(arg: &str) {
     // read in file
-    let contents = fs::read_to_string(arg).expect("y no read");
-
-    // get max, min, sum, count
-    let list = format(&contents);
-
-    // get example station
-    // let example_name = "Şuḩār";
-    let example_name = "Enfield Lock";
-    let data = &list[example_name];
-
-    // get example average
-    let avg = (data.sum / data.count * 10.0).round() / 10.0;
-    // iterate on HashMap in-place
-    // for (_key, data) in list.iter_mut() {
-    //     data.avg = (data.sum / data.count * 10.0).round() / 10.0;
-    // }
-
-    // print example station
-    // println!("{:#?},{:#?},{:#?}", avg, data.min, data.max);
+    let contents = fs::read_to_string(arg).expect("cannot read file");
+    let mut parsing_machine: Parser = Parser::new(&contents);
+    for (label, value) in parsing_machine {
+        println!("");
+    }
 }
 
-fn format<'a>(arg: &'a String) -> HashMap<&'a str, StationData> {
-    // optimization ideas
-    // &str is arbitrary length, if we can set max length based on string length then we can optimize
-    // remove exception handling if know all data is well-formed
+// INLINE FUNCTIONS --------
 
-    // create empty hashmap
-    let mut places: HashMap<&str, StationData> = HashMap::new();
-
-    let mut parsing_machine: Parser = Parser::new(arg);
-
-    for (label, value) in parsing_machine {
-        // print!("{:#?},{:#?}", label, value);
-    }
-
-    // // iterate through all data points
-    // for point in data {
-    //     // split creates another copy/reference
-    //     let mut data_pair = point.split(';');
-
-    //     // operate on iterator
-    //     let label = data_pair.next().unwrap_or("unknown");
-    //     let value: f64 = data_pair.next().unwrap_or("0").parse().unwrap_or(0.0);
-
-    //     // check and update hashmap
-    //     match places.entry(label) {
-    //         Entry::Occupied(mut current_station) => {
-    //             let current_data = current_station.get_mut();
-    //             if value > current_data.max {
-    //                 current_data.max = value;
-    //             }
-    //             if value < current_data.min {
-    //                 current_data.min = value;
-    //             }
-    //             current_data.count += 1.0;
-    //             current_data.sum += value;
-    //         }
-    //         Entry::Vacant(empty) => {
-    //             let new_data = StationData {
-    //                 min: value,
-    //                 max: value,
-    //                 sum: value,
-    //                 count: 1.0,
-    //             };
-    //             empty.insert(new_data);
-    //         }
-    //     }
-    // }
-
-    places
+// debug probe
+#[inline]
+unsafe fn debug(label: &str, input_bytes: &[u8], start_index: usize, cursor_index: usize) {
+    let found_temp_str = input_bytes.get_unchecked(start_index..cursor_index);
+    println!("{}: {:?}", label, str::from_utf8(found_temp_str).unwrap());
 }
 
 // utf-8 initial byte handler
@@ -241,9 +172,7 @@ const fn utf8_acc_cont_byte(ch: u32, byte: u8) -> u32 {
 // hard-code value for continuing byte mask
 const CONT_MASK: u8 = 0b0011_1111;
 
-// returning (code_point, len_bytes)
-
-// testing behavior for unsafe fn
+// returns (code_point, len_bytes)
 #[inline]
 pub unsafe fn next_code_point<'a, I: Iterator<Item = &'a u8>>(
     bytes: &mut I,
@@ -285,43 +214,4 @@ pub unsafe fn next_code_point<'a, I: Iterator<Item = &'a u8>>(
     }
 
     Some((ch, len_bytes))
-}
-
-// code point is variable
-// slicing by bytes
-
-#[inline]
-pub unsafe fn next_code_point_len<'a, I: Iterator<Item = &'a u8>>(bytes: &mut I) -> Option<usize> {
-    // handle ASCII if header byte is in range
-    let x = *bytes.next()?;
-    if x < 128 {
-        return Some(1);
-    }
-
-    // [[[x y] z] w] case
-    // NOTE: Performance is sensitive to the exact formulation here
-    let init = utf8_first_byte(x, 2);
-    // SAFETY: `bytes` produces an UTF-8-like string,
-    // so the iterator must produce a value here.
-    let _ = unsafe { *bytes.next().unwrap_unchecked() };
-    if x >= 0xE0 {
-        // [[x y z] w] case
-        // 5th bit in 0xE0 .. 0xEF is always clear, so `init` is still valid
-        // SAFETY: `bytes` produces an UTF-8-like string,
-        // so the iterator must produce a value here.
-        let _ = unsafe { *bytes.next().unwrap_unchecked() };
-        if x >= 0xF0 { Some(4) } else { Some(3) }
-    } else {
-        Some(2)
-    }
-}
-
-// const fn utf8_first_byte(byte: u8, width: u32)
-unsafe fn debug(label: &str, input_bytes: &[u8], f64_start_loc: usize, new_loc: usize) {
-    let found_stat_string = input_bytes.get_unchecked(f64_start_loc..new_loc);
-    println!(
-        "{}: {:?}",
-        label,
-        str::from_utf8(found_stat_string).unwrap()
-    );
 }
