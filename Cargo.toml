@@ -5,6 +5,6 @@ edition = "2024"
 
 [dependencies]
 hashbrown = "0.15"
-
+rustc-hash = "2.1.0"
 [profile.release]
 debug = true

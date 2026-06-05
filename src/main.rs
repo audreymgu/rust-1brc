@@ -1,7 +1,8 @@
 // use std::collections::HashMap;
 // use std::collections::hash_map::Entry;
 use hashbrown::HashMap;
-use hashbrown::hash_map::EntryRef;
+use hashbrown::hash_map::Entry;
+use rustc_hash::FxBuildHasher;
 use std::env;
 use std::fs;
 use std::str;
@@ -127,32 +128,13 @@ fn read(arg: &str) {
     // let file = std::fs::File::open(args).expect("cannot open file");
     // let contents = BufReader::new(file);
 
-    let mut places: HashMap<&[u8], StationData> = HashMap::new();
+    let mut places: HashMap<&[u8], StationData, FxBuildHasher> = HashMap::default();
     let mut parsing_machine: Parser = Parser::new(&contents);
 
     for (label, value) in parsing_machine {
-        // places
-        //     .entry_ref(label)
-        //     .and_modify(|current_data| {
-        //         if value > current_data.max {
-        //             current_data.max = value;
-        //         }
-        //         if value < current_data.min {
-        //             current_data.min = value;
-        //         }
-        //         current_data.count += 1.0;
-        //         current_data.sum += value;
-        //     })
-        //     .or_insert_with(|| StationData {
-        //         min: value,
-        //         max: value,
-        //         avg: 0.0,
-        //         sum: value,
-        //         count: 1.0,
-        //     });
         // check and update hashmap
-        match places.entry_ref(label) {
-            EntryRef::Occupied(mut current_station) => {
+        match places.entry(label) {
+            Entry::Occupied(mut current_station) => {
                 let current_data = current_station.get_mut();
                 if value > current_data.max {
                     current_data.max = value;
@@ -163,7 +145,7 @@ fn read(arg: &str) {
                 current_data.count += 1.0;
                 current_data.sum += value;
             }
-            EntryRef::Vacant(empty) => {
+            Entry::Vacant(empty) => {
                 empty.insert(StationData {
                     min: value,
                     max: value,
