@@ -16,6 +16,7 @@ struct StationData {
 // define parser inputs
 struct Parser<'a> {
     input: &'a str,
+    input_iter: std::slice::Iter<'a, u8>,
     index: usize,
 }
 
@@ -24,6 +25,7 @@ impl<'a> Parser<'a> {
     fn new(input: &'a str) -> Parser<'a> {
         Parser {
             input: input,
+            input_iter: input.as_bytes().iter(),
             index: 0,
         }
     }
@@ -42,17 +44,17 @@ impl<'a> Iterator for Parser<'a> {
 
         unsafe {
             // turn input into byte iterator
-            let input = self.input;
-            let input_bytes = input.as_bytes();
+            let input_bytes = self.input.as_bytes();
             // if this is destroyed and recreated every time, it will only iterate through the first section,
             // meaning that it will incorrectly count for each subsequent line after the first
-            let mut input_bytes_iter = input_bytes.iter();
+            // this is why we moved the creation of input_iter outside of the next() loop
+            let mut input_bytes_iter = &mut self.input_iter;
 
             // create cursor
             let mut cursor_index = index;
 
             // track name start
-            let mut name_start_index = index;
+            let name_start_index = index;
 
             // advance cursor_index with next_code_point until semicolon is reached
             // TODO: DRY

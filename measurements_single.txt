@@ -1,3 +1,3 @@
 Los Angeles;2.9
-Los Angeles;1.4
-Los Angeles;3.4
+Los Angelé;1.4
+Meme;3.4
