@@ -10,10 +10,10 @@ use std::time::Instant;
 // capture station data
 #[derive(Debug)]
 struct StationData {
-    min: f64,
-    max: f64,
-    sum: f64,
-    count: f64,
+    min: i16,
+    max: i16,
+    sum: i64,
+    count: u32,
 }
 
 // define parser inputs
@@ -35,7 +35,7 @@ impl<'a> Parser<'a> {
 }
 
 impl<'a> Iterator for Parser<'a> {
-    type Item = (&'a [u8], f64);
+    type Item = (&'a [u8], i16);
 
     fn next(&mut self) -> Option<Self::Item> {
         let index = self.index;
@@ -89,13 +89,15 @@ impl<'a> Iterator for Parser<'a> {
             // debug("newln", input_bytes, cursor_index, cursor_index + 1);
 
             // TODO: consolidate loop code with reused code below in some way
-            let found_temp_str = input_bytes.get_unchecked(temp_start_index..cursor_index);
+            let found_temp_bytes = input_bytes.get_unchecked(temp_start_index..cursor_index);
             // debug("temp", input_bytes, temp_start_index, cursor_index);
 
-            let found_number = str::from_utf8(found_temp_str)
-                .unwrap()
-                .parse()
-                .expect("thought this was a f64");
+            // let found_number: i16 = str::from_utf8(found_temp_str)
+            //     .unwrap()
+            //     .parse()
+            //     .expect("thought this was a i16");
+
+            let found_number: i16 = parse_temp(found_temp_bytes);
 
             if (cursor_index < self.input.len()) {
                 cursor_index += 1;
@@ -122,9 +124,6 @@ fn main() {
 fn read(arg: &str) {
     let contents = fs::read_to_string(arg).expect("cannot read file");
 
-    // let file = std::fs::File::open(args).expect("cannot open file");
-    // let contents = BufReader::new(file);
-
     let mut places: HashMap<&[u8], StationData, FxBuildHasher> = HashMap::default();
     let mut parsing_machine: Parser = Parser::new(&contents);
 
@@ -139,15 +138,15 @@ fn read(arg: &str) {
                 if value < current_data.min {
                     current_data.min = value;
                 }
-                current_data.count += 1.0;
-                current_data.sum += value;
+                current_data.count += 1;
+                current_data.sum += value as i64;
             }
             Entry::Vacant(empty) => {
                 empty.insert(StationData {
                     min: value,
                     max: value,
-                    sum: value,
-                    count: 1.0,
+                    sum: value as i64,
+                    count: 1,
                 });
             }
         }
@@ -162,7 +161,7 @@ fn read(arg: &str) {
     for (i, key) in sorted_places.iter().enumerate() {
         let city_name = unsafe { from_utf8_unchecked(key) };
         let city_data = &places[**key];
-        let city_avg = city_data.sum / city_data.count;
+        let city_avg = city_data.sum / city_data.count as i64;
 
         if i > 0 {
             print!(", ");
@@ -183,6 +182,24 @@ fn read(arg: &str) {
 unsafe fn debug(label: &str, input_bytes: &[u8], start_index: usize, cursor_index: usize) {
     let found_temp_str = unsafe { input_bytes.get_unchecked(start_index..cursor_index) };
     println!("{}: {:?}", label, str::from_utf8(found_temp_str).unwrap());
+}
+
+// temp parser
+#[inline]
+fn parse_temp(bytes: &[u8]) -> i16 {
+    let (neg, rem_bytes) = if bytes[0] == b'-' {
+        (true, &bytes[1..])
+    } else {
+        (false, bytes)
+    };
+    let num: i16 = match rem_bytes {
+        [ones, b'.', deci] => (ones - b'0') as i16 * 10 + (deci - b'0') as i16,
+        [tens, ones, b'.', deci] => {
+            (tens - b'0') as i16 * 100 + (ones - b'0') as i16 * 10 + (deci - b'0') as i16
+        }
+        _ => panic!("err {:?}", rem_bytes),
+    };
+    if neg { num * -1 } else { num }
 }
 
 // utf-8 initial byte handler
