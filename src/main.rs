@@ -5,6 +5,7 @@ use hashbrown::hash_map::Entry;
 use std::env;
 use std::fs;
 use std::str;
+use std::str::from_utf8_unchecked;
 use std::time::Instant;
 
 // capture station data
@@ -122,14 +123,16 @@ fn main() {
 
 fn read(arg: &str) {
     let contents = fs::read_to_string(arg).expect("cannot read file");
-    let mut places: HashMap<&str, StationData> = HashMap::new();
+
+    // let file = std::fs::File::open(args).expect("cannot open file");
+    // let contents = BufReader::new(file);
+
+    let mut places: HashMap<&[u8], StationData> = HashMap::new();
     let mut parsing_machine: Parser = Parser::new(&contents);
 
     for (label, value) in parsing_machine {
-        let label_str = str::from_utf8(label).unwrap();
-
         // check and update hashmap
-        match places.entry(label_str) {
+        match places.entry(label) {
             Entry::Occupied(mut current_station) => {
                 let current_data = current_station.get_mut();
                 if value > current_data.max {
@@ -158,8 +161,26 @@ fn read(arg: &str) {
         data.avg = (data.sum / data.count * 10.0).round() / 10.0;
     }
 
+    // sort keys
+    let mut sorted_places: Vec<&&[u8]> = places.keys().collect();
+    sorted_places.sort();
+
     // output to console
-    println!("{:#?}", places);
+    print!("{{");
+    for (i, key) in sorted_places.iter().enumerate() {
+        let city_name = unsafe { from_utf8_unchecked(key) };
+        let city_data = &places[**key];
+
+        if i > 0 {
+            print!(", ");
+        }
+
+        print!(
+            "{}={:.1}/{:.1}/{:.1}",
+            city_name, city_data.min, city_data.avg, city_data.max
+        );
+    }
+    println!("}}");
 }
 
 // INLINE FUNCTIONS --------
@@ -167,7 +188,7 @@ fn read(arg: &str) {
 // debug probe
 #[inline]
 unsafe fn debug(label: &str, input_bytes: &[u8], start_index: usize, cursor_index: usize) {
-    let found_temp_str = input_bytes.get_unchecked(start_index..cursor_index);
+    let found_temp_str = unsafe { input_bytes.get_unchecked(start_index..cursor_index) };
     println!("{}: {:?}", label, str::from_utf8(found_temp_str).unwrap());
 }
 
