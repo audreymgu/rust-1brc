@@ -1,7 +1,11 @@
-use std::collections::HashMap;
+// use std::collections::HashMap;
+// use std::collections::hash_map::Entry;
+use hashbrown::HashMap;
+use hashbrown::hash_map::Entry;
 use std::env;
 use std::fs;
 use std::str;
+use std::time::Instant;
 
 // capture station data
 #[derive(Debug)]
@@ -108,18 +112,54 @@ impl<'a> Iterator for Parser<'a> {
 }
 
 fn main() {
+    let now = Instant::now();
     let args: Vec<String> = env::args().collect();
     let file_path = &args[1];
     read(file_path);
+    let elapsed = now.elapsed();
+    println!("Elapsed: {:.2?}", elapsed);
 }
 
 fn read(arg: &str) {
-    // read in file
     let contents = fs::read_to_string(arg).expect("cannot read file");
+    let mut places: HashMap<&str, StationData> = HashMap::new();
     let mut parsing_machine: Parser = Parser::new(&contents);
+
     for (label, value) in parsing_machine {
-        println!("{},{}", str::from_utf8(label).unwrap(), value);
+        let label_str = str::from_utf8(label).unwrap();
+
+        // check and update hashmap
+        match places.entry(label_str) {
+            Entry::Occupied(mut current_station) => {
+                let current_data = current_station.get_mut();
+                if value > current_data.max {
+                    current_data.max = value;
+                }
+                if value < current_data.min {
+                    current_data.min = value;
+                }
+                current_data.count += 1.0;
+                current_data.sum += value;
+            }
+            Entry::Vacant(empty) => {
+                let new_data = StationData {
+                    min: value,
+                    max: value,
+                    avg: 0.0,
+                    sum: value,
+                    count: 1.0,
+                };
+                empty.insert(new_data);
+            }
+        }
     }
+
+    for (_key, data) in places.iter_mut() {
+        data.avg = (data.sum / data.count * 10.0).round() / 10.0;
+    }
+
+    // output to console
+    println!("{:#?}", places);
 }
 
 // INLINE FUNCTIONS --------
