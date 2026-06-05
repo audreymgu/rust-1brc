@@ -161,7 +161,7 @@ fn read(arg: &str) {
     for (i, key) in sorted_places.iter().enumerate() {
         let city_name = unsafe { from_utf8_unchecked(key) };
         let city_data = &places[**key];
-        let city_avg = city_data.sum / city_data.count as i64;
+        let city_avg = (city_data.sum as f64 / city_data.count as f64) / 10.0;
 
         if i > 0 {
             print!(", ");
@@ -169,7 +169,10 @@ fn read(arg: &str) {
 
         print!(
             "{}={:.1}/{:.1}/{:.1}",
-            city_name, city_data.min, city_avg, city_data.max
+            city_name,
+            city_data.min as f64 / 10.0,
+            city_avg,
+            city_data.max as f64 / 10.0,
         );
     }
     println!("}}");
