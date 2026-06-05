@@ -43,11 +43,7 @@ impl<'a> Iterator for Parser<'a> {
         }
 
         unsafe {
-            // turn input into byte iterator
             let input_bytes = self.input.as_bytes();
-            // if this is destroyed and recreated every time, it will only iterate through the first section,
-            // meaning that it will incorrectly count for each subsequent line after the first
-            // this is why we moved the creation of input_iter outside of the next() loop
             let mut input_bytes_iter = &mut self.input_iter;
 
             // create cursor
@@ -67,7 +63,7 @@ impl<'a> Iterator for Parser<'a> {
             }
 
             // cursor_index should now be at ';'
-            debug("semicolon", input_bytes, cursor_index, cursor_index + 1);
+            // debug("semicolon", input_bytes, cursor_index, cursor_index + 1);
 
             // get name
             let found_name = input_bytes.get_unchecked(name_start_index..cursor_index);
@@ -87,11 +83,11 @@ impl<'a> Iterator for Parser<'a> {
             }
 
             // at this point, cursor_index == index of '\n' on last line
-            debug("newln", input_bytes, cursor_index, cursor_index + 1);
+            // debug("newln", input_bytes, cursor_index, cursor_index + 1);
 
             // TODO: consolidate loop code with reused code below in some way
             let found_temp_str = input_bytes.get_unchecked(temp_start_index..cursor_index);
-            debug("temp", input_bytes, temp_start_index, cursor_index);
+            // debug("temp", input_bytes, temp_start_index, cursor_index);
 
             let found_number = str::from_utf8(found_temp_str)
                 .unwrap()
@@ -101,7 +97,7 @@ impl<'a> Iterator for Parser<'a> {
             if (cursor_index < self.input.len()) {
                 cursor_index += 1;
             }
-            debug("line advance", input_bytes, 0, cursor_index);
+            // debug("line advance", input_bytes, 0, cursor_index);
 
             // catch up iterator index with cursor
             self.index = cursor_index;
@@ -122,7 +118,7 @@ fn read(arg: &str) {
     let contents = fs::read_to_string(arg).expect("cannot read file");
     let mut parsing_machine: Parser = Parser::new(&contents);
     for (label, value) in parsing_machine {
-        println!("");
+        println!("{},{}", str::from_utf8(label).unwrap(), value);
     }
 }
 
