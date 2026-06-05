@@ -41,16 +41,17 @@ impl<'a> Iterator for Parser<'a> {
         }
 
         unsafe {
-            // get input and convert to bytes
+            // turn input into byte iterator
             let input = self.input;
             let input_bytes = input.as_bytes();
+            // if this is destroyed and recreated every time, it will only iterate through the first section,
+            // meaning that it will incorrectly count for each subsequent line after the first
             let mut input_bytes_iter = input_bytes.iter();
 
             // create cursor
             let mut cursor_index = index;
 
             // track name start
-            // TODO: handle index advance
             let mut name_start_index = index;
 
             // advance cursor_index with next_code_point until semicolon is reached
@@ -63,7 +64,7 @@ impl<'a> Iterator for Parser<'a> {
                 cursor_index += len_bytes;
             }
 
-            // cursor_index should be at ';'
+            // cursor_index should now be at ';'
             debug("semicolon", input_bytes, cursor_index, cursor_index + 1);
 
             // get name
@@ -74,36 +75,13 @@ impl<'a> Iterator for Parser<'a> {
             // track temp start
             let temp_start_index = cursor_index;
 
-            // TODO: consolidate
+            // TODO: DRY
             loop {
-                match next_code_point(&mut input_bytes_iter) {
-                    Some((c, len_bytes)) => {
-                        if c == '\n' as u32 {
-                            break;
-                        }
-                        cursor_index += len_bytes;
-                    }
-                    None => {
-                        // EOF handling
-                        // TODO: this is not working
-                        // TODO: make this reusable
-                        println!("Exit condition met");
-
-                        // at this point, cursor_index == index of '\n' on last line
-                        debug("newln", input_bytes, cursor_index, cursor_index + 1);
-
-                        let found_temp_str =
-                            input_bytes.get_unchecked(temp_start_index..cursor_index);
-
-                        // i16, range -99.9, 99.9
-                        let found_number = str::from_utf8(found_temp_str)
-                            .unwrap()
-                            .parse()
-                            .expect("thought this was a f64");
-
-                        return Some((found_name, found_number));
-                    }
+                let (code_point, len_bytes) = next_code_point(&mut input_bytes_iter).unwrap();
+                if code_point == '\n' as u32 {
+                    break;
                 }
+                cursor_index += len_bytes;
             }
 
             // at this point, cursor_index == index of '\n' on last line
