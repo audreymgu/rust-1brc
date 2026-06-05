@@ -1,5 +1,3 @@
-// use std::collections::HashMap;
-// use std::collections::hash_map::Entry;
 use hashbrown::HashMap;
 use hashbrown::hash_map::Entry;
 use rustc_hash::FxBuildHasher;
@@ -16,7 +14,6 @@ struct StationData {
     max: f64,
     sum: f64,
     count: f64,
-    avg: f64,
 }
 
 // define parser inputs
@@ -149,16 +146,11 @@ fn read(arg: &str) {
                 empty.insert(StationData {
                     min: value,
                     max: value,
-                    avg: 0.0,
                     sum: value,
                     count: 1.0,
                 });
             }
         }
-    }
-
-    for (_key, data) in places.iter_mut() {
-        data.avg = (data.sum / data.count * 10.0).round() / 10.0;
     }
 
     // sort keys
@@ -170,6 +162,7 @@ fn read(arg: &str) {
     for (i, key) in sorted_places.iter().enumerate() {
         let city_name = unsafe { from_utf8_unchecked(key) };
         let city_data = &places[**key];
+        let city_avg = city_data.sum / city_data.count;
 
         if i > 0 {
             print!(", ");
@@ -177,7 +170,7 @@ fn read(arg: &str) {
 
         print!(
             "{}={:.1}/{:.1}/{:.1}",
-            city_name, city_data.min, city_data.avg, city_data.max
+            city_name, city_data.min, city_avg, city_data.max
         );
     }
     println!("}}");
