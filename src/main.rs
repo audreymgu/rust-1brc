@@ -58,11 +58,11 @@ impl<'a> Iterator for Parser<'a> {
             // advance cursor_index with next_code_point until semicolon is reached
             // TODO: DRY
             loop {
-                let (code_point, len_bytes) = next_code_point(&mut input_bytes_iter).unwrap();
-                if code_point == ';' as u32 {
+                let byte = next_byte(input_bytes_iter).unwrap();
+                if byte == ';' as u8 {
                     break;
                 }
-                cursor_index += len_bytes;
+                cursor_index += 1;
             }
 
             // cursor_index should now be at ';'
@@ -78,11 +78,11 @@ impl<'a> Iterator for Parser<'a> {
 
             // TODO: DRY
             loop {
-                let (code_point, len_bytes) = next_code_point(&mut input_bytes_iter).unwrap();
-                if code_point == '\n' as u32 {
+                let byte = next_byte(input_bytes_iter).unwrap();
+                if byte == '\n' as u8 {
                     break;
                 }
-                cursor_index += len_bytes;
+                cursor_index += 1;
             }
 
             // at this point, cursor_index == index of '\n' on last line
@@ -91,11 +91,6 @@ impl<'a> Iterator for Parser<'a> {
             // TODO: consolidate loop code with reused code below in some way
             let found_temp_bytes = input_bytes.get_unchecked(temp_start_index..cursor_index);
             // debug("temp", input_bytes, temp_start_index, cursor_index);
-
-            // let found_number: i16 = str::from_utf8(found_temp_str)
-            //     .unwrap()
-            //     .parse()
-            //     .expect("thought this was a i16");
 
             let found_number: i16 = parse_temp(found_temp_bytes);
 
@@ -124,8 +119,9 @@ fn main() {
 fn read(arg: &str) {
     let contents = fs::read_to_string(arg).expect("cannot read file");
 
-    let mut places: HashMap<&[u8], StationData, FxBuildHasher> = HashMap::default();
-    let mut parsing_machine: Parser = Parser::new(&contents);
+    let mut places: HashMap<&[u8], StationData, FxBuildHasher> =
+        HashMap::with_capacity_and_hasher(1024, FxBuildHasher::default());
+    let parsing_machine: Parser = Parser::new(&contents);
 
     for (label, value) in parsing_machine {
         // check and update hashmap
@@ -172,7 +168,7 @@ fn read(arg: &str) {
             city_name,
             city_data.min as f64 / 10.0,
             city_avg,
-            city_data.max as f64 / 10.0,
+            city_data.max as f64 / 10.0
         );
     }
     println!("}}");
@@ -180,14 +176,12 @@ fn read(arg: &str) {
 
 // INLINE FUNCTIONS --------
 
-// debug probe
 #[inline]
 unsafe fn debug(label: &str, input_bytes: &[u8], start_index: usize, cursor_index: usize) {
     let found_temp_str = unsafe { input_bytes.get_unchecked(start_index..cursor_index) };
     println!("{}: {:?}", label, str::from_utf8(found_temp_str).unwrap());
 }
 
-// temp parser
 #[inline]
 fn parse_temp(bytes: &[u8]) -> i16 {
     let (neg, rem_bytes) = if bytes[0] == b'-' {
@@ -205,6 +199,17 @@ fn parse_temp(bytes: &[u8]) -> i16 {
     if neg { num * -1 } else { num }
 }
 
+// #[inline]
+// fn adv_cursor() {
+//     loop {
+//         let byte = next_byte(input_bytes_iter).unwrap();
+//         if byte == ';' as u8 {
+//             break;
+//         }
+//         cursor_index += 1;
+//     }
+// }
+
 // utf-8 initial byte handler
 // inlining removes the need for a function call
 #[inline]
@@ -221,6 +226,12 @@ const fn utf8_acc_cont_byte(ch: u32, byte: u8) -> u32 {
 
 // hard-code value for continuing byte mask
 const CONT_MASK: u8 = 0b0011_1111;
+
+#[inline]
+pub fn next_byte<'a, I: Iterator<Item = &'a u8>>(bytes: &mut I) -> Option<u8> {
+    let byte = *bytes.next()?;
+    Some(byte)
+}
 
 // returns (code_point, len_bytes)
 #[inline]
