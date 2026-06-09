@@ -3,14 +3,13 @@ use hashbrown::hash_map::Entry;
 use memmap2::MmapOptions;
 use rustc_hash::FxBuildHasher;
 use std::env;
-use std::fs;
 use std::fs::File;
-use std::str;
 use std::str::from_utf8_unchecked;
+use std::thread;
 use std::time::Instant;
 
 // capture station data
-#[derive(Debug)]
+#[derive(Debug, Default)]
 struct StationData {
     min: i16,
     max: i16,
@@ -153,18 +152,88 @@ fn main() {
     let file = File::open(file_path).unwrap();
     let mmap = unsafe { MmapOptions::new().map(&file).unwrap() };
 
+    let threads = 9;
+    let length = mmap.len();
+    let split = length / threads;
+
+    // house maps from threads
+    let mut threaded_maps: Vec<HashMap<&[u8], StationData, FxBuildHasher>> = (0..threads)
+        .map(|_| HashMap::with_hasher(FxBuildHasher::default()))
+        .collect();
+
+    // turn into mutable iterator
+    // to get each individual hashmap
+    let mut map_iterator = threaded_maps.iter_mut();
+
+    // chunk file and map to threads
+    thread::scope(|s| {
+        let mut start = 0;
+        for i in 0..threads {
+            // have last chunk end at EOF
+            let mut end = if i == threads - 1 {
+                length
+            } else {
+                start + split
+            };
+
+            // find nearest newline
+            while end < length && mmap[end] != b'\n' {
+                end += 1;
+            }
+
+            // include newline
+            if end < length {
+                end += 1;
+            }
+
+            // define chunk
+            let chunk = &mmap[start..end];
+
+            let map_ref = map_iterator.next().unwrap();
+
+            // spawn thread
+            s.spawn(move || {
+                *map_ref = read(chunk).unwrap();
+            });
+
+            start = end;
+        }
+    });
+
+    // combine hashmaps
+    let merged_map = threaded_maps.into_iter().fold(
+        HashMap::with_hasher(FxBuildHasher::default()),
+        |mut acc: HashMap<&[u8], StationData, FxBuildHasher>,
+         map: HashMap<&[u8], StationData, FxBuildHasher>| {
+            for (k, v) in map {
+                let acc_stn = acc.entry(k).or_default();
+
+                acc_stn.count += v.count;
+                acc_stn.sum += v.sum;
+
+                if v.max > acc_stn.max {
+                    acc_stn.max = v.max;
+                }
+                if v.min < acc_stn.min {
+                    acc_stn.min = v.min;
+                }
+            }
+            acc
+        },
+    );
+
     // parse file
-    let places = read(&mmap).unwrap();
+    // let places = read(&mmap).unwrap();
 
     // sort keys
-    let mut sorted_places: Vec<&&[u8]> = places.keys().collect();
+    let mut sorted_places: Vec<&&[u8]> = merged_map.keys().collect();
     sorted_places.sort();
 
     // output to console
     print!("{{");
     for (i, key) in sorted_places.iter().enumerate() {
         let city_name = unsafe { from_utf8_unchecked(key) };
-        let city_data = &places[**key];
+        let city_data = &merged_map[**key];
         let city_avg = (city_data.sum as f64 / city_data.count as f64) / 10.0;
 
         if i > 0 {
