@@ -20,7 +20,6 @@ struct StationData {
 // define parser inputs
 struct Parser<'a> {
     input: &'a [u8],
-    input_iter: std::slice::Iter<'a, u8>,
     index: usize,
 }
 
@@ -29,7 +28,6 @@ impl<'a> Parser<'a> {
     fn new(input: &'a [u8]) -> Parser<'a> {
         Parser {
             input: input,
-            input_iter: input.iter(),
             index: 0,
         }
     }
@@ -39,71 +37,41 @@ impl<'a> Iterator for Parser<'a> {
     type Item = (&'a [u8], i16);
 
     fn next(&mut self) -> Option<Self::Item> {
-        let index = self.index;
+        let mut end = self.index;
 
         // handle when index reaches end of length
-        if index >= self.input.len() {
+        if self.index >= self.input.len() {
             return None;
         }
 
         unsafe {
-            let input_bytes = self.input;
-            let mut input_bytes_iter = &mut self.input_iter;
+            let input = self.input;
 
-            // create cursor
-            let mut cursor_index = index;
-
-            // track name start
-            let name_start_index = index;
-
-            // advance cursor_index with next_code_point until semicolon is reached
-            // TODO: DRY
-            loop {
-                let byte = next_byte(input_bytes_iter).unwrap();
-                if byte == ';' as u8 {
-                    break;
-                }
-                cursor_index += 1;
+            while input[end] != b';' {
+                end += 1;
             }
 
-            // cursor_index should now be at ';'
-            // debug("semicolon", input_bytes, cursor_index, cursor_index + 1);
+            end += 1;
 
-            // get name
-            let found_name = input_bytes.get_unchecked(name_start_index..cursor_index);
+            let found_name = input.get_unchecked(self.index..end);
 
-            cursor_index += 1; // cursor is now on first digit of temp
+            self.index = end;
 
-            // track temp start
-            let temp_start_index = cursor_index;
-
-            // TODO: DRY
-            loop {
-                let byte = next_byte(input_bytes_iter).unwrap();
-                if byte == '\n' as u8 {
-                    break;
-                }
-                cursor_index += 1;
+            while input[end] != b'\n' {
+                end += 1;
             }
 
-            // at this point, cursor_index == index of '\n' on last line
-            // debug("newln", input_bytes, cursor_index, cursor_index + 1);
+            let found_temp_bytes = input.get_unchecked(self.index..end);
 
-            // TODO: consolidate loop code with reused code below in some way
-            let found_temp_bytes = input_bytes.get_unchecked(temp_start_index..cursor_index);
-            // debug("temp", input_bytes, temp_start_index, cursor_index);
+            let found_temp: i16 = parse_temp(found_temp_bytes);
 
-            let found_number: i16 = parse_temp(found_temp_bytes);
+            self.index = end;
 
-            if (cursor_index < self.input.len()) {
-                cursor_index += 1;
+            if self.index < self.input.len() {
+                self.index += 1;
             }
-            // debug("line advance", input_bytes, 0, cursor_index);
 
-            // catch up iterator index with cursor
-            self.index = cursor_index;
-
-            return Some((found_name, found_number));
+            return Some((found_name, found_temp));
         }
     }
 }
@@ -152,7 +120,7 @@ fn main() {
     let file = File::open(file_path).unwrap();
     let mmap = unsafe { MmapOptions::new().map(&file).unwrap() };
 
-    let threads = 9;
+    let threads = 8;
     let length = mmap.len();
     let split = length / threads;
 
@@ -278,17 +246,6 @@ fn parse_temp(bytes: &[u8]) -> i16 {
     };
     if neg { num * -1 } else { num }
 }
-
-// #[inline]
-// fn adv_cursor() {
-//     loop {
-//         let byte = next_byte(input_bytes_iter).unwrap();
-//         if byte == ';' as u8 {
-//             break;
-//         }
-//         cursor_index += 1;
-//     }
-// }
 
 #[inline]
 pub fn next_byte<'a, I: Iterator<Item = &'a u8>>(bytes: &mut I) -> Option<u8> {
