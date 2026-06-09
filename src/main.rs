@@ -17,6 +17,24 @@ struct StationData {
     count: u32,
 }
 
+impl StationData {
+    fn new(temp: i16) -> Self {
+        Self {
+            max: temp,
+            min: temp,
+            sum: temp as i64,
+            count: 1,
+        }
+    }
+
+    fn update(&mut self, temp: i16) {
+        self.max = i16::max(self.max, temp);
+        self.min = i16::min(self.min, temp);
+        self.sum += temp as i64;
+        self.count += 1;
+    }
+}
+
 // define parser inputs
 struct Parser<'a> {
     input: &'a [u8],
@@ -36,6 +54,7 @@ impl<'a> Parser<'a> {
 impl<'a> Iterator for Parser<'a> {
     type Item = (&'a [u8], i16);
 
+    #[inline]
     fn next(&mut self) -> Option<Self::Item> {
         let mut end = self.index;
 
@@ -85,27 +104,31 @@ fn read(
 
     for (label, value) in parsing_machine {
         // check and update hashmap
-        match places.entry(label) {
-            Entry::Occupied(mut current_station) => {
-                let current_data = current_station.get_mut();
-                if value > current_data.max {
-                    current_data.max = value;
-                }
-                if value < current_data.min {
-                    current_data.min = value;
-                }
-                current_data.count += 1;
-                current_data.sum += value as i64;
-            }
-            Entry::Vacant(empty) => {
-                empty.insert(StationData {
-                    min: value,
-                    max: value,
-                    sum: value as i64,
-                    count: 1,
-                });
-            }
-        }
+        // match places.entry(label) {
+        //     Entry::Occupied(mut current_station) => {
+        //         let current_data = current_station.get_mut();
+        //         if value > current_data.max {
+        //             current_data.max = value;
+        //         }
+        //         if value < current_data.min {
+        //             current_data.min = value;
+        //         }
+        //         current_data.count += 1;
+        //         current_data.sum += value as i64;
+        //     }
+        //     Entry::Vacant(empty) => {
+        //         empty.insert(StationData {
+        //             min: value,
+        //             max: value,
+        //             sum: value as i64,
+        //             count: 1,
+        //         });
+        //     }
+        // }
+        places
+            .entry(label)
+            .and_modify(|prev: &mut StationData| prev.update(value))
+            .or_insert(StationData::new(value));
     }
 
     Ok(places)
@@ -236,10 +259,4 @@ fn parse_temp(bytes: &[u8]) -> i16 {
         _ => panic!("err {:?}", rem_bytes),
     };
     if neg { num * -1 } else { num }
-}
-
-#[inline]
-pub fn next_byte<'a, I: Iterator<Item = &'a u8>>(bytes: &mut I) -> Option<u8> {
-    let byte = *bytes.next()?;
-    Some(byte)
 }
