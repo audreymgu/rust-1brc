@@ -1,8 +1,10 @@
 use hashbrown::HashMap;
 use hashbrown::hash_map::Entry;
+use memmap2::MmapOptions;
 use rustc_hash::FxBuildHasher;
 use std::env;
 use std::fs;
+use std::fs::File;
 use std::str;
 use std::str::from_utf8_unchecked;
 use std::time::Instant;
@@ -18,17 +20,17 @@ struct StationData {
 
 // define parser inputs
 struct Parser<'a> {
-    input: &'a str,
+    input: &'a [u8],
     input_iter: std::slice::Iter<'a, u8>,
     index: usize,
 }
 
 // parser instantiation
 impl<'a> Parser<'a> {
-    fn new(input: &'a str) -> Parser<'a> {
+    fn new(input: &'a [u8]) -> Parser<'a> {
         Parser {
             input: input,
-            input_iter: input.as_bytes().iter(),
+            input_iter: input.iter(),
             index: 0,
         }
     }
@@ -46,7 +48,7 @@ impl<'a> Iterator for Parser<'a> {
         }
 
         unsafe {
-            let input_bytes = self.input.as_bytes();
+            let input_bytes = self.input;
             let mut input_bytes_iter = &mut self.input_iter;
 
             // create cursor
@@ -107,21 +109,12 @@ impl<'a> Iterator for Parser<'a> {
     }
 }
 
-fn main() {
-    let now = Instant::now();
-    let args: Vec<String> = env::args().collect();
-    let file_path = &args[1];
-    read(file_path);
-    let elapsed = now.elapsed();
-    println!("Elapsed: {:.2?}", elapsed);
-}
-
-fn read(arg: &str) {
-    let contents = fs::read_to_string(arg).expect("cannot read file");
-
+fn read(
+    map: &[u8],
+) -> Result<HashMap<&[u8], StationData, FxBuildHasher>, Box<dyn std::error::Error>> {
     let mut places: HashMap<&[u8], StationData, FxBuildHasher> =
         HashMap::with_capacity_and_hasher(1024, FxBuildHasher::default());
-    let parsing_machine: Parser = Parser::new(&contents);
+    let parsing_machine: Parser = Parser::new(map);
 
     for (label, value) in parsing_machine {
         // check and update hashmap
@@ -148,6 +141,21 @@ fn read(arg: &str) {
         }
     }
 
+    Ok(places)
+}
+
+fn main() {
+    let now = Instant::now();
+    let args: Vec<String> = env::args().collect();
+
+    // memory map file
+    let file_path = &args[1];
+    let file = File::open(file_path).unwrap();
+    let mmap = unsafe { MmapOptions::new().map(&file).unwrap() };
+
+    // parse file
+    let places = read(&mmap).unwrap();
+
     // sort keys
     let mut sorted_places: Vec<&&[u8]> = places.keys().collect();
     sorted_places.sort();
@@ -172,15 +180,18 @@ fn read(arg: &str) {
         );
     }
     println!("}}");
+
+    let elapsed = now.elapsed();
+    println!("Elapsed: {:.2?}", elapsed);
 }
 
 // INLINE FUNCTIONS --------
 
-#[inline]
-unsafe fn debug(label: &str, input_bytes: &[u8], start_index: usize, cursor_index: usize) {
-    let found_temp_str = unsafe { input_bytes.get_unchecked(start_index..cursor_index) };
-    println!("{}: {:?}", label, str::from_utf8(found_temp_str).unwrap());
-}
+// #[inline]
+// unsafe fn debug(label: &str, input_bytes: &[u8], start_index: usize, cursor_index: usize) {
+//     let found_temp_str = unsafe { input_bytes.get_unchecked(start_index..cursor_index) };
+//     println!("{}: {:?}", label, str::from_utf8(found_temp_str).unwrap());
+// }
 
 #[inline]
 fn parse_temp(bytes: &[u8]) -> i16 {
@@ -210,69 +221,8 @@ fn parse_temp(bytes: &[u8]) -> i16 {
 //     }
 // }
 
-// utf-8 initial byte handler
-// inlining removes the need for a function call
-#[inline]
-const fn utf8_first_byte(byte: u8, width: u32) -> u32 {
-    (byte & (0x7F >> width)) as u32
-}
-
-// utf-8 continuing byte accumulator
-#[inline]
-const fn utf8_acc_cont_byte(ch: u32, byte: u8) -> u32 {
-    // create 6 trailing spaces, then strip header and accumulate via bitwise OR
-    (ch << 6) | (byte & 0x3F) as u32
-}
-
-// hard-code value for continuing byte mask
-const CONT_MASK: u8 = 0b0011_1111;
-
 #[inline]
 pub fn next_byte<'a, I: Iterator<Item = &'a u8>>(bytes: &mut I) -> Option<u8> {
     let byte = *bytes.next()?;
     Some(byte)
-}
-
-// returns (code_point, len_bytes)
-#[inline]
-pub unsafe fn next_code_point<'a, I: Iterator<Item = &'a u8>>(
-    bytes: &mut I,
-) -> Option<(u32, usize)> {
-    // handle ASCII if header byte is in range
-    let x = *bytes.next()?;
-    let mut len_bytes = 1;
-    if x < 128 {
-        return Some((x as u32, len_bytes));
-    }
-
-    len_bytes += 1;
-
-    // [[[x y] z] w] case
-    // NOTE: Performance is sensitive to the exact formulation here
-    let init = utf8_first_byte(x, 2);
-    // SAFETY: `bytes` produces an UTF-8-like string,
-    // so the iterator must produce a value here.
-    let y = unsafe { *bytes.next().unwrap_unchecked() };
-    let mut ch = utf8_acc_cont_byte(init, y);
-    if x >= 0xE0 {
-        len_bytes += 1;
-        // [[x y z] w] case
-        // 5th bit in 0xE0 .. 0xEF is always clear, so `init` is still valid
-        // SAFETY: `bytes` produces an UTF-8-like string,
-        // so the iterator must produce a value here.
-        let z = unsafe { *bytes.next().unwrap_unchecked() };
-        let y_z = utf8_acc_cont_byte((y & CONT_MASK) as u32, z);
-        ch = init << 12 | y_z;
-        if x >= 0xF0 {
-            len_bytes += 1;
-            // [x y z w] case
-            // use only the lower 3 bits of `init`
-            // SAFETY: `bytes` produces an UTF-8-like string,
-            // so the iterator must produce a value here.
-            let w = unsafe { *bytes.next().unwrap_unchecked() };
-            ch = (init & 7) << 18 | utf8_acc_cont_byte(y_z, w);
-        }
-    }
-
-    Some((ch, len_bytes))
 }
