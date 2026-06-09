@@ -190,9 +190,6 @@ fn main() {
         },
     );
 
-    // parse file
-    // let places = read(&mmap).unwrap();
-
     // sort keys
     let mut sorted_places: Vec<&&[u8]> = merged_map.keys().collect();
     sorted_places.sort();
@@ -223,12 +220,6 @@ fn main() {
 }
 
 // INLINE FUNCTIONS --------
-
-// #[inline]
-// unsafe fn debug(label: &str, input_bytes: &[u8], start_index: usize, cursor_index: usize) {
-//     let found_temp_str = unsafe { input_bytes.get_unchecked(start_index..cursor_index) };
-//     println!("{}: {:?}", label, str::from_utf8(found_temp_str).unwrap());
-// }
 
 #[inline]
 fn parse_temp(bytes: &[u8]) -> i16 {
